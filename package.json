@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.2.5",
+    "botbuilder": "^4.17.0-blobs1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.513.0",
     "next": "15.3.2",
