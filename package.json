@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@azure/ai-language-conversations": "^1.0.0-beta.1",
     "@radix-ui/react-select": "^2.2.5",
     "botbuilder": "^4.17.0-blobs1",
     "clsx": "^2.1.1",
