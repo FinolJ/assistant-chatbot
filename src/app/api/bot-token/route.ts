@@ -7,7 +7,7 @@ interface BotConversation {
 }
 
 // Almacén temporal de conversaciones
-const conversations = new Map<string, BotConversation>();
+export const conversations = new Map<string, BotConversation>();
 
 // Crear nueva conversación
 export async function POST(): Promise<Response> {
@@ -154,7 +154,7 @@ export async function PUT(request: Request): Promise<Response> {
 
     // Obtener respuesta
     const botResponse = await getBotResponse(conversation);
-    console.log('✅ [CLIENT] Respuesta obtenida');
+    console.log('✅ [CLIENT] Respuesta obtenida', botResponse);
     
     return Response.json(botResponse);
     
@@ -191,7 +191,9 @@ async function getBotResponse(conversation: BotConversation, maxRetries = 3) {
       }
       
       const data = await response.json();
-      
+
+      console.log('📥 [CLIENT] Respuesta del bot:', data);
+
       if (data.watermark) {
         conversation.watermark = data.watermark;
       }
