@@ -166,7 +166,9 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
 
     try {
       const result = await sendMessageToBot(currentMessage);
-      
+
+      console.log('Resultado del bot:', result);
+
       if (result.success && result.botMessages && result.botMessages.length > 0) {
         // Agregar mensajes del bot que no hemos procesado antes
         const newBotMessages = result.botMessages

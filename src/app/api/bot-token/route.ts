@@ -8,10 +8,7 @@ interface BotConversation {
 }
 
 // Almacén temporal de conversaciones
-// NOTA: En un entorno de producción, este Map DEBERÍA ser reemplazado
-// por un almacén persistente (e.g., base de datos, Redis) para evitar
-// la pérdida de sesiones al reiniciar el servidor.
-const conversations = new Map<string, BotConversation>();
+export const conversations = new Map<string, BotConversation>();
 
 // Crear nueva conversación
 export async function POST(): Promise<Response> {
@@ -119,15 +116,10 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     // En lugar de esperar un tiempo fijo, se llama directamente a getBotResponse
     // la cual ya implementa lógica de polling con reintentos.
     const botResponse = await getBotResponse(conversation);
-
-    if (botResponse.success) {
-      console.log('✅ [CLIENT] Mensaje de bot recibido:', botResponse.messages);
-      return NextResponse.json({ success: true, botMessages: botResponse.messages });
-    } else {
-      console.warn('⚠️ [CLIENT] No se recibió respuesta del bot o hubo un error al obtenerla.');
-      return NextResponse.json({ success: false, error: botResponse.error || 'No se recibió respuesta del bot.' }, { status: 500 });
-    }
-
+    console.log('✅ [CLIENT] Respuesta obtenida', botResponse);
+    
+    return Response.json(botResponse);
+    
   } catch (error) {
     console.error('❌ [CLIENT] Error en la función PUT (enviar mensaje):', error);
     return NextResponse.json({ error: 'Internal server error al enviar mensaje.' }, { status: 500 });
@@ -162,6 +154,8 @@ async function getBotResponse(conversation: BotConversation): Promise<{ success:
       }
 
       const data = await response.json();
+
+      console.log('📥 [CLIENT] Respuesta del bot:', data);
 
       if (data.watermark) {
         conversation.watermark = data.watermark;
