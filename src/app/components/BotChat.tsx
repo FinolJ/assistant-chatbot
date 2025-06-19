@@ -129,6 +129,7 @@ export const BotChat: React.FC = () => {
 
     try {
       const result = await sendMessageToBot(currentMessage);
+      console.log(result);
       
       if (result.success && result.botMessages && result.botMessages.length > 0) {
         // Agregar mensajes del bot que no hemos procesado antes
@@ -178,6 +179,7 @@ export const BotChat: React.FC = () => {
       };
       setMessages(prev => [...prev, errorBotMessage]);
     }
+
     
     setIsLoading(false);
   };

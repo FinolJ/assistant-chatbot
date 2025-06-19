@@ -1,6 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+
+// --- INTERFACES ---
 
 interface Message {
   id: string;
@@ -36,15 +38,19 @@ interface AssistantContextType {
   initializeBot: () => Promise<void>;
 }
 
+// --- CONTEXT CREATION ---
+
 const AssistantContext = createContext<AssistantContextType | undefined>(undefined);
 
 export const useAssistant = () => {
   const context = useContext(AssistantContext);
   if (context === undefined) {
-    throw new Error('useAssistant must be used within an AssistantProvider');
+    throw new Error('useAssistant debe ser usado dentro de un AssistantProvider');
   }
   return context;
 };
+
+// --- PROVIDER COMPONENT ---
 
 interface AssistantProviderProps {
   children: React.ReactNode;
@@ -60,21 +66,20 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   
-  const botSessionRef = useRef<BotSession | null>(null);
-  const processedMessageIds = useRef<Set<string>>(new Set());
+  // Usamos una ref para guardar la sesión del bot y evitar re-renderizados innecesarios.
+  const botSessionRef = React.useRef<BotSession | null>(null);
 
-  // Inicializar conexión con el bot
+  // Inicializa la conexión con el bot
   const initializeBot = async () => {
+    // Evita reinicializar si ya está conectado
+    if (isConnected || isLoading) return;
+
     try {
+      setIsLoading(true);
       setError(null);
       setDebugInfo('Iniciando conexión con el bot...');
       
-      const response = await fetch('/api/bot-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await fetch('/api/bot-token', { method: 'POST' });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -92,7 +97,6 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
       setIsConnected(true);
       setDebugInfo(`Conectado exitosamente. Usuario ID: ${data.userId}`);
       
-      // Mensaje de bienvenida
       const welcomeMessage: Message = {
         id: 'welcome',
         text: '¡Hola! Soy tu asistente virtual. ¿En qué puedo ayudarte?',
@@ -102,7 +106,6 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
       
       setMessages([welcomeMessage]);
       
-      // Si el chat no está abierto, incrementar contador de no leídos
       if (!isOpen) {
         setUnreadCount(1);
       }
@@ -112,10 +115,12 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
       const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
       setError(errorMessage);
       setDebugInfo(`Error de conexión: ${errorMessage}`);
+    } finally {
+        setIsLoading(false);
     }
   };
 
-  // Enviar mensaje al bot a través de nuestra API
+  // Envía un mensaje a nuestra API
   const sendMessageToBot = async (message: string) => {
     if (!botSessionRef.current) {
       throw new Error('Bot no inicializado');
@@ -125,9 +130,7 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
 
     const response = await fetch('/api/bot-token', {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: botSessionRef.current.userId,
         message: message
@@ -140,12 +143,12 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
     }
 
     const result = await response.json();
-    setDebugInfo(`Respuesta recibida: ${result.botMessages?.length || 0} mensajes del bot`);
+    setDebugInfo(`Respuesta recibida: ${result.messages?.length || 0} mensajes del bot`);
     
     return result;
   };
 
-  // Manejar envío de mensaje
+  // Lógica principal para enviar un mensaje
   const sendMessage = async () => {
     if (!inputMessage.trim() || isLoading || !isConnected) return;
 
@@ -156,7 +159,6 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
       timestamp: new Date()
     };
 
-    // Agregar mensaje del usuario inmediatamente
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
     setError(null);
@@ -166,50 +168,32 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
 
     try {
       const result = await sendMessageToBot(currentMessage);
+      
+      // LÓGICA MODIFICADA: Procesa solo el ÚLTIMO mensaje del array.
+      if (result.success && result.messages && Array.isArray(result.messages) && result.messages.length > 0) {
+        
+        // Tomamos solo el último mensaje de texto del array
+        const lastMessageText = result.messages[result.messages.length - 1];
 
-      console.log('Resultado del bot:', result);
-
-      if (result.success && result.botMessages && result.botMessages.length > 0) {
-        // Agregar mensajes del bot que no hemos procesado antes
-        const newBotMessages = result.botMessages
-          .filter((msg: any) => !processedMessageIds.current.has(msg.id))
-          .map((msg: any) => {
-            processedMessageIds.current.add(msg.id);
-            return {
-              id: msg.id,
-              text: msg.text,
-              from: 'bot' as const,
-              timestamp: new Date(msg.timestamp || Date.now()),
-              attachments: msg.attachments
-            };
-          });
-
-        if (newBotMessages.length > 0) {
-          setMessages(prev => [...prev, ...newBotMessages]);
-          setDebugInfo(`Se agregaron ${newBotMessages.length} mensajes del bot`);
-          
-          // Si el chat no está abierto, incrementar contador de no leídos
-          if (!isOpen) {
-            setUnreadCount(prev => prev + newBotMessages.length);
-          }
-        } else {
-          setDebugInfo('No se encontraron mensajes nuevos del bot');
-        }
-      } else {
-        // Si no hay respuesta del bot después de todos los reintentos
-        const fallbackMessage: Message = {
-          id: `bot-fallback-${Date.now()}`,
-          text: 'No he podido procesar tu mensaje en este momento. ¿Podrías intentar reformularlo?',
-          from: 'bot',
+        const newBotMessage: Message = {
+          id: `bot-${Date.now()}`,
+          text: lastMessageText,
+          from: 'bot' as const,
           timestamp: new Date()
         };
-        setMessages(prev => [...prev, fallbackMessage]);
-        setDebugInfo('No se recibió respuesta del bot, usando mensaje fallback');
+
+        // Añadimos ese único mensaje al estado del chat.
+        setMessages(prev => [...prev, newBotMessage]);
+        setDebugInfo(`Se agregó el último mensaje del bot`);
         
-        // Si el chat no está abierto, incrementar contador de no leídos
+        // Si el chat no está abierto, incrementar contador de no leídos en 1.
         if (!isOpen) {
           setUnreadCount(prev => prev + 1);
         }
+
+      } else {
+        // Si la API no devuelve un formato esperado, lanzamos un error.
+        throw new Error(result.error || 'No se recibió una respuesta válida del bot.');
       }
       
     } catch (error) {
@@ -218,7 +202,6 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
       setError(errorMessage);
       setDebugInfo(`Error: ${errorMessage}`);
       
-      // Mensaje de error para el usuario
       const errorBotMessage: Message = {
         id: `error-${Date.now()}`,
         text: 'Lo siento, hubo un problema al procesar tu mensaje. Por favor, inténtalo de nuevo.',
@@ -227,23 +210,22 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
       };
       setMessages(prev => [...prev, errorBotMessage]);
       
-      // Si el chat no está abierto, incrementar contador de no leídos
       if (!isOpen) {
         setUnreadCount(prev => prev + 1);
       }
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
-  // Resetear contador cuando se abre el chat
+  // Efecto para resetear el contador de no leídos cuando se abre el chat
   useEffect(() => {
     if (isOpen) {
       setUnreadCount(0);
     }
   }, [isOpen]);
 
-  // Inicializar bot al montar el componente
+  // Efecto para inicializar el bot al montar el proveedor
   useEffect(() => {
     initializeBot();
   }, []);
