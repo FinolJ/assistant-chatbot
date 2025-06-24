@@ -131,6 +131,7 @@ export const AssistantProvider: React.FC<AssistantProviderProps> = ({ children }
     const response = await fetch('/api/bot-token', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         userId: botSessionRef.current.userId,
         message: message

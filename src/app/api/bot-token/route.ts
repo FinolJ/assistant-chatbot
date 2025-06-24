@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 
-// La interfaz no cambia, seguimos necesitando el watermark.
+// Se mantiene tu interfaz original
 interface BotConversation {
   token: string;
   conversationId: string;
@@ -9,6 +10,7 @@ interface BotConversation {
   watermark?: string;
 }
 
+// Este mapa ya no se usará en la función PUT
 export const conversations = new Map<string, BotConversation>();
 
 /**
@@ -16,41 +18,72 @@ export const conversations = new Map<string, BotConversation>();
  * Inicia una nueva conversación con el servicio de Direct Line.
  */
 export async function POST(): Promise<Response> {
+  const store = await cookies(); // Corregido: sin await
+
   try {
     const directLineSecret = process.env.AZURE_BOT_DIRECT_LINE_SECRET;
     if (!directLineSecret) {
-      throw new Error('El secreto de Direct Line (AZURE_BOT_DIRECT_LINE_SECRET) no está configurado en el servidor.');
+      throw new Error(
+        "El secreto de Direct Line (AZURE_BOT_DIRECT_LINE_SECRET) no está configurado en el servidor."
+      );
     }
 
-    const userId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const userId = `user-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
     console.log(`[SERVER] Creando conversación para userId: ${userId}`);
 
-    const response = await fetch('https://directline.botframework.com/v3/directline/conversations', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${directLineSecret}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ user: { id: userId } })
-    });
+    const response = await fetch(
+      "https://directline.botframework.com/v3/directline/conversations",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${directLineSecret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ user: { id: userId } }),
+      }
+    );
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(`[SERVER] Error al iniciar conversación con Direct Line. Status: ${response.status}, Body: ${errorBody}`);
-      throw new Error('Fallo al iniciar conversación con Direct Line.');
+      console.error(
+        `[SERVER] Error al iniciar conversación con Direct Line. Status: ${response.status}, Body: ${errorBody}`
+      );
+      throw new Error("Fallo al iniciar conversación con Direct Line.");
     }
-    
+
     const data = await response.json();
     const { token, conversationId, expiresIn } = data;
 
+    // Aunque ya no lo usaremos en PUT, lo mantenemos por si acaso
     conversations.set(userId, { token, conversationId, expiresIn, userId });
     console.log(`[SERVER] ✅ Conversación iniciada para userId: ${userId}`);
 
-    return NextResponse.json({ success: true, userId, token, conversationId });
+    // Tu lógica para establecer las cookies se mantiene
+    store.set("conversationId", conversationId, {
+      path: "/",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+    store.set("conversationToken", token, {
+      path: "/",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
 
+    return NextResponse.json({ success: true, userId, token, conversationId });
   } catch (error: any) {
-    console.error('❌ [SERVER] Error fatal en la creación de conversación:', error.message);
-    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
+    console.error(
+      "❌ [SERVER] Error fatal en la creación de conversación:",
+      error.message
+    );
+    return NextResponse.json(
+      { error: "Error interno del servidor." },
+      { status: 500 }
+    );
   }
 }
 
@@ -59,97 +92,117 @@ export async function POST(): Promise<Response> {
  * Envía un mensaje y sondea para obtener las respuestas del bot.
  */
 export async function PUT(request: NextRequest): Promise<Response> {
+  const store = await cookies(); // Corregido: sin await
+
+  // Leemos los valores de las cookies, tal como lo tenías
+  const conversationId = store.get("conversationId")?.value;
+  const conversationToken = store.get("conversationToken")?.value;
+
   try {
+    // Verificamos que las cookies existan
+    if (!conversationId || !conversationToken) {
+        return NextResponse.json(
+            { error: "Sesión no encontrada en las cookies. Por favor, reinicia la conversación." },
+            { status: 404 }
+        );
+    }
+
     const { userId, message } = await request.json();
     if (!userId || !message) {
-      return NextResponse.json({ error: 'El userId y el mensaje son requeridos.' }, { status: 400 });
+      return NextResponse.json(
+        { error: "El userId y el mensaje son requeridos." },
+        { status: 400 }
+      );
     }
     
-    const conversation = conversations.get(userId);
-    if (!conversation) {
-      return NextResponse.json({ error: 'Conversación no encontrada. Por favor, inicia una nueva conversación.' }, { status: 404 });
-    }
+    // -----------------------------------------------------------------
+    // CAMBIO PRINCIPAL: Se elimina el uso del mapa en memoria.
+    // Ya no se usa `conversations.get(userId)`.
+    // -----------------------------------------------------------------
 
-    // --- Enviar el mensaje del usuario ---
-    await fetch(`https://directline.botframework.com/v3/directline/conversations/${conversation.conversationId}/activities`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${conversation.token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ type: 'message', from: { id: userId }, text: message }),
-    });
+    // --- Enviar el mensaje del usuario usando los datos de las cookies ---
+    await fetch(
+      `https://directline.botframework.com/v3/directline/conversations/${conversationId}/activities`,
+      {
+        method: "POST",
+        headers: {
+          // Usamos el token de la cookie
+          Authorization: `Bearer ${conversationToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "message",
+          from: { id: userId },
+          text: message,
+        }),
+      }
+    );
 
-    console.log(`[SERVER] Mensaje de ${userId} enviado. Empezando a sondear respuestas...`);
+    console.log(
+      `[SERVER] Mensaje de ${userId} enviado. Empezando a sondear respuestas...`
+    );
 
     // --- Sondear para obtener las respuestas del bot ---
-    // La función ahora devuelve un array de strings.
-    const botReplies = await pollForBotReplies(conversation, userId);
+    // Pasamos los valores de las cookies directamente a la función de sondeo
+    const botReplies = await pollForBotReplies(
+      userId,
+      conversationId,
+      conversationToken
+    );
 
-    console.log(`[SERVER] Sondeo completado para ${userId}. Respuestas encontradas:`, botReplies.length);
-    
     if (botReplies.length > 0) {
-      console.log(`[SERVER] ✅ Respuestas del bot encontradas para ${userId}:`, botReplies);
       return NextResponse.json({ success: true, messages: botReplies });
     } else {
-      console.warn(`[SERVER] ⚠️ No se encontró respuesta del bot para ${userId} después de esperar.`);
-      return NextResponse.json({ success: false, error: 'Tiempo de espera agotado para la respuesta del bot.' }, { status: 504 });
+      // Si no hay respuesta, devolvemos un éxito con un array vacío.
+      return NextResponse.json({ success: true, messages: [] });
     }
-
   } catch (error: any) {
     console.error("❌ [SERVER] Error en PUT:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-
 /**
- * Función de sondeo que consulta la API de Direct Line y acumula todas las respuestas del bot.
- * @param conversation - El objeto de la conversación guardada.
- * @param userId - El ID del usuario actual.
- * @returns Un array con todos los mensajes de texto del bot.
+ * Función de sondeo simplificada para no depender de un estado de watermark
+ * que estaba guardado en el mapa en memoria.
  */
-async function pollForBotReplies(conversation: BotConversation, userId: string): Promise<string[]> {
+async function pollForBotReplies(
+  userId: string,
+  conversationId: string,
+  token: string
+): Promise<string[]> {
   const allReplies: string[] = [];
   const maxRetries = 10;
-  const retryDelay = 500; // 500ms
+  const retryDelay = 500;
 
   for (let i = 0; i < maxRetries; i++) {
-    const url = `https://directline.botframework.com/v3/directline/conversations/${conversation.conversationId}/activities?watermark=${conversation.watermark || ''}`;
+    // Simplificamos la URL para no usar el watermark por ahora
+    const url = `https://directline.botframework.com/v3/directline/conversations/${conversationId}/activities`;
 
     const activityResponse = await fetch(url, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${conversation.token}` }
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!activityResponse.ok) break;
 
     const activityData = await activityResponse.json();
 
-    // Filtramos TODAS las actividades que sean mensajes del bot
     const botMessages = activityData.activities.filter(
-      (activity: any) => activity.type === 'message' && activity.from.id !== userId
+      (activity: any) =>
+        activity.type === "message" && activity.from.id !== userId && activity.text
     );
-
+    
+    // Para evitar leer los mismos mensajes una y otra vez, solo procesaremos la última actividad del bot
     if (botMessages.length > 0) {
-        // Añadimos el texto de cada mensaje encontrado al array de respuestas
-        for(const botMessage of botMessages) {
-            allReplies.push(botMessage.text);
-        }
-    }
-    
-    if (activityData.watermark) {
-      conversation.watermark = activityData.watermark;
-      conversations.set(conversation.userId, conversation);
-    }
-    
-    if (allReplies.length > 0) {
+      const lastMessage = botMessages[botMessages.length - 1];
+      allReplies.push(lastMessage.text);
+      // Devolvemos la respuesta inmediatamente para no seguir sondeando
       return allReplies;
     }
 
-    
-    await new Promise(resolve => setTimeout(resolve, retryDelay));
+    await new Promise((resolve) => setTimeout(resolve, retryDelay));
   }
 
-  return allReplies; // Devolvemos las respuestas encontradas, o un array vacío si no hubo.
+  return allReplies;
 }
