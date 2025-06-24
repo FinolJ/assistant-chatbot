@@ -85,6 +85,8 @@ export async function PUT(request: NextRequest): Promise<Response> {
     // --- Sondear para obtener las respuestas del bot ---
     // La función ahora devuelve un array de strings.
     const botReplies = await pollForBotReplies(conversation, userId);
+
+    console.log(`[SERVER] Sondeo completado para ${userId}. Respuestas encontradas:`, botReplies.length);
     
     if (botReplies.length > 0) {
       console.log(`[SERVER] ✅ Respuestas del bot encontradas para ${userId}:`, botReplies);
@@ -136,19 +138,16 @@ async function pollForBotReplies(conversation: BotConversation, userId: string):
         }
     }
     
-    // Actualizamos el watermark para no volver a leer estos mensajes.
     if (activityData.watermark) {
       conversation.watermark = activityData.watermark;
       conversations.set(conversation.userId, conversation);
     }
     
-    // Si ya hemos encontrado respuestas, las devolvemos inmediatamente.
-    // Esto asume que el bot envía sus respuestas en un solo lote.
     if (allReplies.length > 0) {
       return allReplies;
     }
 
-    // Esperamos un poco antes del siguiente intento.
+    
     await new Promise(resolve => setTimeout(resolve, retryDelay));
   }
 

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { EchoBot } from "@/app/modules/bot-module";
+import { KnowledgeBaseBot } from "@/app/modules/bot-module";
 import { TurnContext, Activity, InvokeResponse } from "botbuilder";
 
 import { adapter } from "@/app/modules/bot";
@@ -22,7 +22,7 @@ const onTurnErrorHandler: OnTurnErrorHandler = async (context, error) => {
 };
 adapter.onTurnError = onTurnErrorHandler;
 
-const myBot = new EchoBot();
+const myBot = new KnowledgeBaseBot();
 
 export async function POST(req: NextRequest): Promise<Response> {
   try {

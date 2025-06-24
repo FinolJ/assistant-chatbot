@@ -3,16 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
-    "@azure/ai-language-conversations": "^1.0.0-beta.1",
     "@radix-ui/react-select": "^2.2.5",
     "botbuilder": "^4.17.0-blobs1",
+    "botbuilder-ai": "^4.17.0-blobs1",
+    "cldrjs": "^0.5.5",
     "clsx": "^2.1.1",
+    "globalize": "^1.7.0",
     "lucide-react": "^0.513.0",
     "next": "15.3.2",
     "next-themes": "^0.4.6",
